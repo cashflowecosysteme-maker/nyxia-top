@@ -1,12 +1,26 @@
 /**
- * nyxia.top — Worker domaine entier
- * - Sert les pages statiques (tes pages de vente)
- * - Injecte ref-track.js sur CHAQUE page HTML (pas besoin de l'ajouter à la main)
- * - API compteur ref
+ * nyxia.top — Worker domaine
+ * /r/CODE → /?ref=CODE  (lien promoteur / admin)
+ * Injecte ref-track.js sur les pages HTML
  */
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    // https://nyxia.top/r/EPUV39MT
+    const m = url.pathname.match(/^\/r\/([A-Za-z0-9_-]{3,32})\/?$/i);
+    if (m && request.method === 'GET') {
+      const code = m[1].toUpperCase();
+      try {
+        if (env.CASHFLOW_KV) {
+          const day = new Date().toISOString().slice(0, 10);
+          const key = 'ref_click:' + code + ':' + day;
+          const prev = parseInt((await env.CASHFLOW_KV.get(key)) || '0', 10) || 0;
+          await env.CASHFLOW_KV.put(key, String(prev + 1), { expirationTtl: 120 * 24 * 3600 });
+        }
+      } catch (_) {}
+      return Response.redirect(url.origin + '/?ref=' + encodeURIComponent(code), 302);
+    }
 
     if (url.pathname === '/api/ref-ping' && request.method === 'POST') {
       try {
@@ -25,44 +39,21 @@ export default {
       }
     }
 
-    if (url.pathname === '/api/ref-stats' && request.method === 'GET') {
-      const ref = (url.searchParams.get('ref') || '').trim().toUpperCase();
-      if (!ref || !env.CASHFLOW_KV) return json({ clicks: 0 });
-      const day = new Date().toISOString().slice(0, 10);
-      const n = parseInt((await env.CASHFLOW_KV.get('ref_click:' + ref + ':' + day)) || '0', 10) || 0;
-      return json({ ref, day, clicks: n });
-    }
-
-    // Assets (ne pas injecter dans js/css/images)
     let res = await env.ASSETS.fetch(request);
-
     const ct = (res.headers.get('Content-Type') || '').toLowerCase();
     const isHtml = ct.includes('text/html') || url.pathname.endsWith('.html') || url.pathname === '/' || url.pathname === '';
+    if (!isHtml || request.method !== 'GET') return res;
 
-    if (!isHtml || request.method !== 'GET') {
-      return res;
-    }
-
-    // Injecte le script de tracking avant </body> sur toutes les pages HTML du domaine
     let html = await res.text();
     if (!html.includes('ref-track.js')) {
       const tag = '<script src="/ref-track.js" defer></script>';
-      if (html.includes('</body>')) {
-        html = html.replace('</body>', tag + '\n</body>');
-      } else {
-        html += tag;
-      }
+      html = html.includes('</body>') ? html.replace('</body>', tag + '\n</body>') : html + tag;
     }
-
     const headers = new Headers(res.headers);
     headers.set('Content-Type', 'text/html; charset=utf-8');
     return new Response(html, { status: res.status, headers });
   }
 };
-
 function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json' }
-  });
+  return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
 }
