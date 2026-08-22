@@ -1,6 +1,8 @@
 /**
- * NyXia — tracking promoteur pour TOUT le domaine nyxia.top
- * Fonctionne sur n'importe quelle page de vente du domaine.
+ * NyXia — tracking promoteur pour TOUT l'écosystème *.nyxia.top
+ * À déposer à la racine de CHAQUE portail + sur nyxia.top.
+ * Le code promoteur (?ref=) est capté puis conservé 90 jours, et suit
+ * AUTOMATIQUEMENT d'un sous-domaine à l'autre grâce au cookie .nyxia.top.
  */
 (function () {
   var KEY = 'nyxia_ref';
@@ -10,7 +12,8 @@
   if (ref) {
     try {
       localStorage.setItem(KEY, ref);
-      document.cookie = KEY + '=' + encodeURIComponent(ref) + '; path=/; max-age=' + (90 * 24 * 3600) + '; SameSite=Lax';
+      // Cookie partagé sur tout *.nyxia.top (avant : host-only)
+      document.cookie = KEY + '=' + encodeURIComponent(ref) + '; path=/; domain=.nyxia.top; max-age=' + (90 * 24 * 3600) + '; SameSite=Lax';
     } catch (e) {}
   } else {
     try { ref = localStorage.getItem(KEY) || ''; } catch (e) { ref = ''; }
@@ -26,7 +29,6 @@
     if (!ref || !url) return url;
     try {
       var u = new URL(url, location.origin);
-      // ne double pas si déjà présent
       if (!u.searchParams.get('ref')) u.searchParams.set('ref', ref);
       return u.toString();
     } catch (e) {
@@ -40,7 +42,7 @@
 
   if (!ref) return;
 
-  // Ping compteur (silencieux)
+  // Ping compteur (silencieux ; sans effet si le portail n'a pas l'endpoint)
   try {
     fetch('/api/ref-ping', {
       method: 'POST',
@@ -49,9 +51,9 @@
     }).catch(function () {});
   } catch (e) {}
 
-  // Ajoute ?ref= sur les CTA : id, classe, ou data-ref-link
+  // Ajoute ?ref= sur les CTA de paiement : id, classe, data-ref-link, systeme.io, publication-web
   function apply() {
-    document.querySelectorAll('a#ctaPay, a.cta-pay, a[data-ref-link], a[href*="publication-web.com"], a[href*="systeme.io"]').forEach(function (a) {
+    document.querySelectorAll('a#ctaPay, a.cta-pay, a.card-cta, a.btn-buy, a[data-ref-link], a[href*="publication-web.com"], a[href*="systeme.io"]').forEach(function (a) {
       var href = a.getAttribute('href');
       if (!href || href.charAt(0) === '#') return;
       a.setAttribute('href', withRef(href));
