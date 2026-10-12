@@ -11,28 +11,18 @@ export default {
     const m = url.pathname.match(/^\/r\/([A-Za-z0-9_-]{3,32})\/?$/i);
     if (m && request.method === 'GET') {
       const code = m[1].toUpperCase();
-      try {
-        if (env.CASHFLOW_KV) {
-          const day = new Date().toISOString().slice(0, 10);
-          const key = 'ref_click:' + code + ':' + day;
-          const prev = parseInt((await env.CASHFLOW_KV.get(key)) || '0', 10) || 0;
-          await env.CASHFLOW_KV.put(key, String(prev + 1), { expirationTtl: 120 * 24 * 3600 });
-        }
-      } catch (_) {}
-      return Response.redirect(url.origin + '/?ref=' + encodeURIComponent(code), 302);
+      const eventId=crypto.randomUUID();
+      await nyxRecordClick(env,code,eventId);
+      return Response.redirect(url.origin+'/?ref='+encodeURIComponent(code)+'&nx_visit='+encodeURIComponent(eventId),302);
     }
 
     if (url.pathname === '/api/ref-ping' && request.method === 'POST') {
       try {
         const body = await request.json();
-        const ref = String(body.ref || '').trim().toUpperCase().slice(0, 32);
-        if (!ref) return json({ ok: false }, 400);
-        if (env.CASHFLOW_KV) {
-          const day = new Date().toISOString().slice(0, 10);
-          const key = 'ref_click:' + ref + ':' + day;
-          const prev = parseInt((await env.CASHFLOW_KV.get(key)) || '0', 10) || 0;
-          await env.CASHFLOW_KV.put(key, String(prev + 1), { expirationTtl: 120 * 24 * 3600 });
-        }
+        const ref=String(body.ref || '').trim().toUpperCase();
+        const eventId=String(body.eventId || '');
+        if (!/^[A-Z0-9_-]{3,32}$/.test(ref) || !/^[A-Za-z0-9_-]{16,100}$/.test(eventId)) return json({ok:false},400);
+        await nyxRecordClick(env,ref,eventId);
         return json({ ok: true });
       } catch (e) {
         return json({ ok: false }, 400);
@@ -56,4 +46,9 @@ export default {
 };
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } });
+}
+
+async function nyxRecordClick(env,code,eventId) {
+  if (!env.CASHFLOW_KV) return;
+  await env.CASHFLOW_KV.put('ref_click:'+code+':event:'+eventId,'1',{expirationTtl:120*24*3600});
 }

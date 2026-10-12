@@ -9,6 +9,7 @@
   var params = new URLSearchParams(location.search);
   var ref = (params.get('ref') || params.get('code') || params.get('r') || '').trim().toUpperCase();
 
+  var explicitRef=ref;
   if (ref) {
     try {
       localStorage.setItem(KEY, ref);
@@ -42,14 +43,17 @@
 
   if (!ref) return;
 
-  // Ping compteur (silencieux ; sans effet si le portail n'a pas l'endpoint)
-  try {
-    fetch('/api/ref-ping', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ref: ref, path: location.pathname })
-    }).catch(function () {});
-  } catch (e) {}
+  // Attribution conservée ; compter uniquement une arrivée par un lien explicite.
+  var navigation = window.performance && performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
+  var sameSite=false;
+  try { if(document.referrer) { var host=new URL(document.referrer).hostname; sameSite=host==='nyxia.top'||host.endsWith('.nyxia.top'); } } catch(e) {}
+  var eventId=params.get('nx_visit') || '';
+  if (explicitRef && /^[A-Z0-9_-]{3,32}$/.test(explicitRef) && (!navigation || navigation.type==='navigate') && (!sameSite || eventId)) {
+    if (!eventId) eventId=window.crypto && crypto.randomUUID ? crypto.randomUUID() : 'visit_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2);
+    try {
+      fetch('/api/ref-ping',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ref:explicitRef,eventId:eventId})}).catch(function(){});
+    } catch(e) {}
+  }
 
   // Ajoute ?ref= sur les CTA de paiement : id, classe, data-ref-link, systeme.io, publication-web
   function apply() {
